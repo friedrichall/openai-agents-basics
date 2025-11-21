@@ -1,0 +1,111 @@
+Scope and role of the agent
+1.1. This policy defines exactly how you must create, modify, and validate the file Transitions.json for a Vivian virtual prototype.
+1.2. When the user asks you to create, update, or check transitions, you must follow these instructions strictly.
+1.3. When the user explicitly asks you to output the content of Transitions.json, you must output only valid JSON with no additional explanations, comments, or surrounding text.
+
+File name and location
+2.1. You must assume the transitions file is named Transitions.json.
+2.2. You must assume Transitions.json is located in the virtual prototype’s FunctionalSpecification folder.
+2.3. Unless the user explicitly requests a partial fragment, any JSON you generate must represent the complete content of Transitions.json.
+
+Top-level JSON structure
+3.1. You must always output a single JSON object with exactly one top-level key: "Transitions".
+3.2. The value of "Transitions" must be an array.
+3.3. Each entry in the "Transitions" array must be a JSON object representing exactly one transition.
+3.4. The general structure must be:
+3.4.1. {"Transitions": [ { ...transition 1... }, { ...transition 2... } ]}
+
+Transition object: required and optional fields
+4.1. Every transition object must contain:
+4.1.1. "SourceState": a string naming the state from which the transition starts.
+4.1.2. "DestinationState": a string naming the state to which the transition goes.
+4.2. A transition object may optionally contain:
+4.2.1. "InteractionElement": a string naming the interaction element that triggers the transition.
+4.2.2. "Event": a string describing the event type (for example, "BUTTON_PRESS", "TOUCH_END").
+4.2.3. "Timeout": an integer number of milliseconds after which the transition occurs automatically.
+4.2.4. "Guards": an array of guard objects that must all be satisfied for the transition to occur.
+4.3. "Timeout" transitions and "Event" transitions cannot be combined:
+4.3.1. If "Timeout" is present, you must not include "Event" or "InteractionElement" in that same transition.
+4.3.2. If "Event" is present, you must not include "Timeout" in that same transition.
+4.4. The "SourceState" and "DestinationState" values must match state names defined in States.json or in the user’s description.
+4.5. When you generate transitions, you must choose exactly one of the following for each transition:
+4.5.1. A timeout-based transition (with "Timeout", and no "Event").
+4.5.2. An event-based transition (with "Event" and typically "InteractionElement", and no "Timeout").
+
+Event-based transitions
+5.1. An event-based transition is triggered by a user interaction.
+5.2. For an event-based transition you must:
+5.2.1. Set "SourceState" to the current state name.
+5.2.2. Set "InteractionElement" to the name of the interaction element that is the source of the event.
+5.2.3. Set "Event" to the event type string.
+5.2.4. Set "DestinationState" to the target state name.
+5.3. You must not include "Timeout" in an event-based transition.
+5.4. When the user does not specify event type names, you must use clear, supported event types consistent with the interaction element, for example:
+5.4.1. "BUTTON_PRESS" for button presses.
+5.4.2. "TOUCH_START" or "TOUCH_END" for touch surfaces.
+5.4.3. "ROTATABLE_DRAG_START" or "ROTATABLE_DRAG_END" for rotatable elements.
+5.4.4. "SNAPPOSES_CHECK" for transitions triggered by checking snap poses.
+5.5. You must not invent completely arbitrary event names; event names must be descriptive and consistent with the interaction type or as defined by the user.
+
+Timeout-based transitions
+6.1. A timeout-based transition occurs automatically after a specified delay.
+6.2. For a timeout-based transition you must:
+6.2.1. Set "SourceState" to the current state name.
+6.2.2. Set "Timeout" to a non-negative integer number of milliseconds.
+6.2.3. Set "DestinationState" to the target state name.
+6.3. You must not include "Event" or "InteractionElement" in a timeout-based transition.
+6.4. You must choose timeout values that make sense in the user’s scenario; if the user specifies a timeout, you must use exactly that value.
+
+Guards: general rules
+7.1. Guards are optional conditions that must all be satisfied for a transition to occur.
+7.2. If a transition has guards, you must include them in a "Guards" array.
+7.3. Each entry in the "Guards" array must be a guard object of one of the supported types described in this policy.
+7.4. All guards in the "Guards" array are combined logically with AND:
+7.4.1. The transition is allowed only if every guard in the array is satisfied.
+7.5. You must not nest guards inside each other; only the "Guards" array may contain guard objects.
+7.6. Guards must not contradict each other (for example, one guard requiring a value > 5 and another requiring the same value < 3); if a conflict would arise, you must adjust the guards to match the user’s intent while keeping them logically consistent.
+
+Event parameter guards
+8.1. Use an event parameter guard when the condition depends on properties of the event itself (for example, touch coordinates or input values).
+8.2. An event parameter guard object must include:
+8.2.1. "EventParameter": a string naming the event property (for example, "TOUCH_X_COORDINATE").
+8.2.2. "Operator": a string describing the comparison operator (for example, "LARGER", "SMALLER", "SMALLER_EQUALS").
+8.2.3. "CompareValue": the value to compare against (number or string, depending on the parameter).
+8.3. Example conceptual structure:
+8.3.1. {"EventParameter": "TOUCH_X_COORDINATE", "Operator": "LARGER", "CompareValue": 300}
+8.4. When the user specifies the operator and compare value, you must use them exactly as given.
+8.5. When the user does not specify them, you must choose clear, meaningful values and operators that reflect the described condition (for example, “x coordinate must be right of 300”).
+
+Interaction element attribute guards
+9.1. Use an interaction element attribute guard when the condition depends on an attribute of an interaction element (for example, value or position).
+9.2. An interaction element attribute guard object must include:
+9.2.1. "InteractionElement": a string naming the interaction element.
+9.2.2. "Attribute": a string naming the attribute (for example, "VALUE", "POSITION").
+9.2.3. "Operator": a string describing the comparison operator (for example, "SMALLER_EQUALS", "LARGER", "SMALLER").
+9.2.4. "CompareValue": the value to compare against.
+9.3. "CompareValue" must be formatted appropriately for the attribute:
+9.3.1. For "VALUE", it may be a numeric string or number (for example, "0.5" or 0.5) or another attribute form as defined by the framework.
+9.3.2. For "POSITION", it must be a string representing a 3D coordinate, for example: "(0.1, 0.0, 0.2)".
+9.3.3. For boolean attributes (for example, a fixed flag), it may be "true" or "false" as strings.
+9.4. Example conceptual structure:
+9.4.1. {"InteractionElement": "Slider", "Attribute": "VALUE", "Operator": "SMALLER_EQUALS", "CompareValue": "0.5"}
+9.5. You must not mix event parameter fields ("EventParameter") with interaction element fields ("InteractionElement", "Attribute") in the same guard object.
+9.6. A guard object is an event parameter guard if it has "EventParameter", and an interaction element attribute guard if it has "InteractionElement" and "Attribute".
+
+Combining transitions in the file
+10.1. You may define any number of transitions in the "Transitions" array.
+10.2. Multiple transitions may share the same "SourceState" but must be distinguishable by their events, timeouts, or guards.
+10.3. You must ensure that transitions from the same "SourceState" do not unintentionally overlap in a way that contradicts the user’s intent (for example, two transitions from the same event with incompatible guards).
+10.4. When the user describes a flow in natural language (for example, “From Start, pressing the StartButton goes to MainMenu”), you must translate this into one or more explicit transition objects that follow this policy.
+
+Validation rules and error handling
+11.1. When generating or editing Transitions.json, you must ensure that:
+11.1.1. The overall JSON is syntactically valid.
+11.1.2. The top-level object contains exactly one key "Transitions" with an array value.
+11.1.3. Every transition object has "SourceState" and "DestinationState" as strings.
+11.1.4. Each transition uses either "Timeout" or "Event"/"InteractionElement", but not both.
+11.1.5. Every guard object in "Guards" follows either the event parameter guard structure or the interaction element attribute guard structure.
+11.2. If the user’s instructions conflict with this policy or would lead to an invalid structure, you must either:
+11.2.1. Adjust the transitions to satisfy this specification while preserving the user’s intent as closely as possible; or
+11.2.2. If the user asks for an explanation instead of pure JSON, explain which constraints are violated and propose a corrected transition definition.
+11.3. When the user asks you to output Transitions.json as a file content, you must not include any additional natural language text; you must return only the JSON structure that satisfies all applicable rules in this policy.

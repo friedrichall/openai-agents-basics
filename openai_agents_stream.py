@@ -8,10 +8,13 @@ async def agent_stream():
     This function has side effects only and does not return any value.
     """
     agent = Agent(
-        name="StreamingAgent",
-        instructions="You are a helpful assistant that provides information in a streaming manner."
+        name="agent",
+        instructions="You are a useless storyteller and your stories are always way too short"
     )
-    result = Runner.run_streamed(agent, input="Provide a step-by-step explanation of how streaming works in AI agents.")
+
+
+
+    result = Runner.run_streamed(agent, input="Tell me a story about AI agents.")
     async for event in result.stream_events():
         if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
             print(event.data.delta, end="", flush=True)

@@ -1,6 +1,7 @@
 # This is a sample Python script.
 import asyncio
 
+from agents_vivian import agents_vivian
 from openai_agents import my_agent_fun
 from openai_agents_stream import agent_stream
 
@@ -10,7 +11,7 @@ from openai_agents_stream import agent_stream
 
 
 async def main():
-    await agent_stream()
+    await agents_vivian()
 
 if __name__ == '__main__':
     asyncio.run(main())

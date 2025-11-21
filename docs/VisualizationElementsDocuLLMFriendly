@@ -1,0 +1,112 @@
+Scope and role of the agent
+1.1. This policy defines exactly how you must create, modify, and validate the file VisualizationElements.json for a Vivian virtual prototype.
+1.2. When the user asks you to create, update, or check visualization elements, you must follow these instructions strictly.
+1.3. When the user explicitly asks you to output the content of VisualizationElements.json, you must output only valid JSON with no additional explanations, comments, or surrounding text.
+
+File name and location
+2.1. You must assume the visualization elements file is named VisualizationElements.json.
+2.2. You must assume VisualizationElements.json is located in the virtual prototype’s FunctionalSpecification folder.
+2.3. Unless the user explicitly requests a partial fragment, any JSON you generate must represent the complete content of VisualizationElements.json.
+
+Top-level JSON structure
+3.1. You must always output a single JSON object with exactly one top-level key: "Elements".
+3.2. The value of "Elements" must be an array.
+3.3. Each entry in the "Elements" array must be a JSON object representing exactly one visualization element.
+3.4. The general structure must be:
+3.4.1. {"Elements": [ { ...element 1... }, { ...element 2... } ]}
+
+General rules for visualization elements
+4.1. Every visualization element object must contain a "Type" field.
+4.2. "Type" must be one of the following strings: "Light", "Screen", "AppearingObject", "SoundSource", "Animation", "Particles".
+4.3. Every visualization element object must contain a "Name" field.
+4.4. "Name" must be a string that uniquely identifies the visualization element within VisualizationElements.json.
+4.5. You must not create two visualization elements with the same "Name" in the same file.
+4.6. You must not add fields to a visualization element that are not described for its type in this policy, unless the user explicitly instructs you to extend the schema and acknowledges that this deviates from the Vivian specification.
+4.7. When vectors (such as planes) are required, you must use objects with keys "x", "y", and "z", each containing numeric values (for example: 0, 0.0, 1.0).
+4.8. When resolutions are required, you must use objects with keys "x" and "y", each containing positive integer values (for example: 800, 480).
+4.9. All numeric values must be valid JSON numbers (not strings), unless explicitly stated otherwise.
+
+Light configuration ("Type": "Light")
+5.1. A Light visualization element represents an emissive light source (for example, an LED or glow effect).
+5.2. For a Light element, you must include:
+5.2.1. "Type" with the value "Light".
+5.2.2. "Name" with a unique string identifier.
+5.2.3. "EmissionColor" as an object describing the RGBA color.
+5.3. "EmissionColor" must be an object with the following numeric fields:
+5.3.1. "r": red component, a number between 0.0 and 1.0.
+5.3.2. "g": green component, a number between 0.0 and 1.0.
+5.3.3. "b": blue component, a number between 0.0 and 1.0.
+5.3.4. "a": alpha (opacity) component, a number between 0.0 and 1.0.
+5.4. You must not add additional fields to a Light element unless explicitly requested.
+5.5. Example conceptual structure:
+5.5.1. {"Type": "Light", "Name": "StatusLED", "EmissionColor": {"r": 1.0, "g": 0.5, "b": 0.0, "a": 1.0}}
+
+Screen configuration ("Type": "Screen")
+6.1. A Screen visualization element defines a planar surface that displays UI or other content.
+6.2. For a Screen element, you must include:
+6.2.1. "Type" with the value "Screen".
+6.2.2. "Name" with a string identifier.
+6.2.3. "Plane" as an object representing the normal vector of the screen surface.
+6.2.4. "Resolution" as an object representing the display resolution in pixels.
+6.3. "Plane" must be an object with numeric fields:
+6.3.1. "x": x-component of the normal vector.
+6.3.2. "y": y-component of the normal vector.
+6.3.3. "z": z-component of the normal vector.
+6.4. "Resolution" must be an object with integer fields:
+6.4.1. "x": horizontal resolution in pixels, a positive integer.
+6.4.2. "y": vertical resolution in pixels, a positive integer.
+6.5. You must not add additional fields to a Screen element unless explicitly requested.
+6.6. Example conceptual structure:
+6.6.1. {"Type": "Screen", "Name": "MainDisplay", "Plane": {"x": 0.0, "y": 0.0, "z": 1.0}, "Resolution": {"x": 800, "y": 480}}
+
+AppearingObject configuration ("Type": "AppearingObject")
+7.1. An AppearingObject visualization element represents a 3D object that appears or disappears based on the current state.
+7.2. For an AppearingObject element, you must include:
+7.2.1. "Type" with the value "AppearingObject".
+7.2.2. "Name" with a string identifier.
+7.3. You may optionally include a "Value" field:
+7.3.1. "Value" must be a numeric value, typically 1.0 for visible and 0.0 for hidden.
+7.4. If the user does not specify an initial visibility, you may omit "Value" and assume a default behavior as defined by the broader configuration.
+7.5. You must not add additional fields to an AppearingObject element unless explicitly requested.
+7.6. Example conceptual structure:
+7.6.1. {"Type": "AppearingObject", "Name": "CoverLid", "Value": 1.0}
+
+SoundSource configuration ("Type": "SoundSource")
+8.1. A SoundSource visualization element represents an audio source attached to a model element.
+8.2. For a SoundSource element, you must include:
+8.2.1. "Type" with the value "SoundSource".
+8.2.2. "Name" with a string identifier.
+8.3. You must not add additional fields to a SoundSource element unless explicitly requested.
+8.4. Example conceptual structure:
+8.4.1. {"Type": "SoundSource", "Name": "Speaker"}
+
+Animation configuration ("Type": "Animation")
+9.1. An Animation visualization element triggers or visualizes animations attached to a model element (for example, in a Unity prefab with configured animations).
+9.2. For an Animation element, you must include:
+9.2.1. "Type" with the value "Animation".
+9.2.2. "Name" with a string identifier.
+9.3. You must not add additional fields to an Animation element unless explicitly requested.
+9.4. Example conceptual structure:
+9.4.1. {"Type": "Animation", "Name": "DoorOpenAnimation"}
+
+Particles configuration ("Type": "Particles")
+10.1. A Particles visualization element represents a visual particle effect (for example, steam or smoke) attached to a model element with configured particle systems.
+10.2. For a Particles element, you must include:
+10.2.1. "Type" with the value "Particles".
+10.2.2. "Name" with a string identifier.
+10.3. You must not add additional fields to a Particles element unless explicitly requested.
+10.4. Example conceptual structure:
+10.4.1. {"Type": "Particles", "Name": "SteamEffect"}
+
+Validation rules and conflict handling
+11.1. When generating or editing VisualizationElements.json, you must ensure that the JSON is syntactically valid.
+11.2. You must ensure that the top-level object contains exactly one key "Elements" and that its value is an array.
+11.3. You must ensure that every visualization element in "Elements" has a valid "Type" and "Name" as defined in this policy.
+11.4. You must ensure that all required fields for each "Type" are present and correctly formatted.
+11.5. You must ensure that all numeric ranges and constraints are respected, including:
+11.5.1. "EmissionColor" components between 0.0 and 1.0.
+11.5.2. Positive integer pixel resolutions in "Resolution".
+11.6. If the user’s instructions conflict with this policy or would lead to an invalid structure, you must either:
+11.6.1. Adjust the visualization element definitions to satisfy this specification while preserving the user’s intent as closely as possible; or
+11.6.2. If the user asks for an explanation instead of pure JSON, explain which constraints are violated and propose a corrected definition.
+11.7. When the user asks you to output VisualizationElements.json as file content, you must not include any additional natural language text; you must return only the JSON structure that satisfies all applicable rules in this policy.
