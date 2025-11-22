@@ -1,12 +1,14 @@
+import json
+
 from agents import Agent, Runner, ItemHelpers
 
+from constants.agent_instructions import MANAGER_INSTRUCTIONS, INTERACTION_ELEMENTS_INSTRUCTIONS, \
+    TRANSITIONS_INSTRUCTIONS, STATES_INSTRUCTIONS, VISUALIZATION_ELEMENTS_INSTRUCTIONS
 from model.output_type_FuncSpec import FunctionalSpecification
 from model.output_type_InteractionElements import InteractionElements
 from model.output_type_States import States
 from model.output_type_Transitions import Transitions
 from model.output_type_VisualizationElements import VisualizationElements
-from constants.agent_instructions import MANAGER_INSTRUCTIONS, INTERACTION_ELEMENTS_INSTRUCTIONS, \
-    TRANSITIONS_INSTRUCTIONS, STATES_INSTRUCTIONS, VISUALIZATION_ELEMENTS_INSTRUCTIONS
 
 BASE_MODEL = "gpt-5.1"
 
@@ -83,7 +85,8 @@ async def agents_vivian():
             if event.item.type == "tool_call_item":
                 print("-- Tool was called")
             elif event.item.type == "tool_call_output_item":
-                print(f"-- Tool output: {event.item.output}")
+                print(f"-- Tool output: ")
+                print(json.dumps(json.loads(event.item.output), indent=4, ensure_ascii=False))
             elif event.item.type == "message_output_item":
                 print(f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}")
             else:
