@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from agents import Agent, Runner, ItemHelpers
 
@@ -13,6 +14,7 @@ from model.output_type_VisualizationElements import VisualizationElements
 from model.output_type_VisualizationArrays import VisualizationArrays
 
 BASE_MODEL = "gpt-5.1"
+OUTPUT_DIR = Path("generated_specs")
 
 USER_INPUT = (
     "generate a complete functional specification of a virtual prototype with two cubes: one is a slider and the other one is a rotatable."
@@ -103,6 +105,21 @@ async def agents_vivian():
                 print(f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}")
             else:
                 pass  # Ignore other event types
+
+    final_output = getattr(result, "final_output", None)
+    if final_output:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        file_map = {
+            "InteractionElements.json": final_output.interaction_elements.model_dump(),
+            "VisualizationElements.json": final_output.visualization_elements.model_dump(),
+            "VisualizationArrays.json": final_output.visualization_arrays.model_dump(),
+            "States.json": final_output.states.model_dump(),
+            "Transitions.json": final_output.transitions.model_dump(),
+        }
+        for filename, payload in file_map.items():
+            path = OUTPUT_DIR / filename
+            path.write_text(json.dumps(payload, indent=4, ensure_ascii=False), encoding="utf-8")
+            print(f"Wrote {path}")
 
     print("=== Run complete ===")
 
