@@ -3,17 +3,19 @@ import json
 from agents import Agent, Runner, ItemHelpers
 
 from constants.agent_instructions import MANAGER_INSTRUCTIONS, INTERACTION_ELEMENTS_INSTRUCTIONS, \
-    TRANSITIONS_INSTRUCTIONS, STATES_INSTRUCTIONS, VISUALIZATION_ELEMENTS_INSTRUCTIONS
+    TRANSITIONS_INSTRUCTIONS, STATES_INSTRUCTIONS, VISUALIZATION_ELEMENTS_INSTRUCTIONS, \
+    VISUALIZATION_ARRAYS_INSTRUCTIONS
 from model.output_type_FuncSpec import FunctionalSpecification
 from model.output_type_InteractionElements import InteractionElements
 from model.output_type_States import States
 from model.output_type_Transitions import Transitions
 from model.output_type_VisualizationElements import VisualizationElements
+from model.output_type_VisualizationArrays import VisualizationArrays
 
 BASE_MODEL = "gpt-5.1"
 
 USER_INPUT = (
-    "generate a complete functional specification of a virtual prototype with one button that changes the color of a light when pressed"
+    "generate a complete functional specification of a virtual prototype with two cubes: one is a slider and the other one is a rotatable. Omit all the optional elements within the generated JSON files"
 )
 
 async def agents_vivian():
@@ -42,6 +44,12 @@ async def agents_vivian():
         instructions=VISUALIZATION_ELEMENTS_INSTRUCTIONS,
         output_type=VisualizationElements
     )
+    visualization_arrays_agent = Agent(
+        name="visualization_arrays_agent",
+        model=BASE_MODEL,
+        instructions=VISUALIZATION_ARRAYS_INSTRUCTIONS,
+        output_type=VisualizationArrays
+    )
 
 
 
@@ -64,7 +72,11 @@ async def agents_vivian():
             ),
             visualization_elements_agent.as_tool(
                 tool_name="visualization_elements_JSON_generator",
-                tool_description="Generates the VisualizationElements.json file based on the prototype description and existing elements.")],
+                tool_description="Generates the VisualizationElements.json file based on the prototype description and existing elements."),
+            visualization_arrays_agent.as_tool(
+                tool_name="visualization_arrays_JSON_generator",
+                tool_description="Generates the VisualizationArrays.json file based on the prototype description and existing elements.")
+        ],
         output_type=FunctionalSpecification
     )
 
