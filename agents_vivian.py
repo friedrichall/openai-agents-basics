@@ -15,7 +15,7 @@ from model.output_type_VisualizationArrays import VisualizationArrays
 BASE_MODEL = "gpt-5.1"
 
 USER_INPUT = (
-    "generate a complete functional specification of a virtual prototype with two cubes: one is a slider and the other one is a rotatable. Omit all the optional elements within the generated JSON files"
+    "generate a complete functional specification of a virtual prototype with two cubes: one is a slider and the other one is a rotatable."
 )
 
 async def agents_vivian():
