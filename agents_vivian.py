@@ -21,7 +21,7 @@ USER_INPUT = (
 )
 
 async def agents_vivian():
-    """Sets up and runs the Vivian Functional Specification generation agents."""
+    """Sets up and runs the Vivian Functional Specification generation agents, with the manager agent orchestrating the specialized sub-agents to assemble the final FunctionalSpecification output."""
     interaction_elements_agent = Agent(
         name="interaction_elements_agent",
         model=BASE_MODEL,
@@ -74,10 +74,12 @@ async def agents_vivian():
             ),
             visualization_elements_agent.as_tool(
                 tool_name="visualization_elements_JSON_generator",
-                tool_description="Generates the VisualizationElements.json file based on the prototype description and existing elements."),
+                tool_description="Generates the VisualizationElements.json file based on the prototype description and existing elements."
+            ),
             visualization_arrays_agent.as_tool(
                 tool_name="visualization_arrays_JSON_generator",
-                tool_description="Generates the VisualizationArrays.json file based on the prototype description and existing elements.")
+                tool_description="Generates the VisualizationArrays.json file based on the prototype description and existing elements."
+            )
         ],
         output_type=FunctionalSpecification
     )
@@ -86,6 +88,7 @@ async def agents_vivian():
     result = Runner.run_streamed(
         manager_agent, input=USER_INPUT
     )
+    tool_names_by_call_id = {}
     async for event in result.stream_events():
         # We'll ignore the raw responses event deltas
         if event.type == "raw_response_event":
@@ -97,10 +100,26 @@ async def agents_vivian():
         # When items are generated, print them
         elif event.type == "run_item_stream_event":
             if event.item.type == "tool_call_item":
-                print("-- Tool was called")
+                raw = getattr(event.item, "raw_item", None)
+                call_id = None
+                if hasattr(raw, "name"):
+                    tool_name = raw.name
+                elif hasattr(raw, "function") and hasattr(raw.function, "name"):
+                    tool_name = raw.function.name
+                elif isinstance(raw, dict):
+                    tool_name = raw.get("name") or raw.get("function", {}).get("name")
+                    call_id = raw.get("call_id")
+                else:
+                    tool_name = None
+                if call_id is None and hasattr(raw, "call_id"):
+                    call_id = raw.call_id
+                if call_id and tool_name:
+                    tool_names_by_call_id[call_id] = tool_name
+                suffix = f": {tool_name}" if tool_name else ""
+                print(f"-- Tool was called{suffix}")
             elif event.item.type == "tool_call_output_item":
-                print(f"-- Tool output: ")
-                print(json.dumps(json.loads(event.item.output), indent=4, ensure_ascii=False))
+                # Output will be written to files; skip console printing to reduce noise.
+                continue
             elif event.item.type == "message_output_item":
                 print(f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}")
             else:
