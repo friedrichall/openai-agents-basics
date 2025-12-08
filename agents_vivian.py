@@ -1,5 +1,7 @@
 import json
+import textwrap
 from pathlib import Path
+from typing import Dict
 
 from agents import Agent, Runner, ItemHelpers
 
@@ -20,8 +22,24 @@ USER_INPUT = (
     "generate a complete functional specification of a virtual prototype with two cubes: one is a slider and the other one is a rotatable."
 )
 
-async def agents_vivian():
-    """Sets up and runs the Vivian Functional Specification generation agents, with the manager agent orchestrating the specialized sub-agents to assemble the final FunctionalSpecification output."""
+
+def build_vivian_prompt(description: str, objects: Dict[str, str]) -> str:
+    object_lines = "\n".join(f"- {name}: {typ}" for name, typ in objects.items()) or "(none provided)"
+    return textwrap.dedent(
+        f"""
+        Create a complete Vivian FunctionalSpecification for the Unity scene below.
+
+        Scene description:
+        {description or "(no description provided)"}
+
+        Interaction objects (name -> interaction type):
+        {object_lines}
+        """
+    ).strip()
+
+
+def build_manager_agent() -> Agent:
+    """Create the Vivian manager agent with all sub-agents attached."""
     interaction_elements_agent = Agent(
         name="interaction_elements_agent",
         model=BASE_MODEL,
@@ -53,9 +71,7 @@ async def agents_vivian():
         output_type=VisualizationArrays
     )
 
-
-
-    manager_agent = Agent(
+    return Agent(
         name="manager_agent",
         model=BASE_MODEL,
         instructions=MANAGER_INSTRUCTIONS,
@@ -85,19 +101,17 @@ async def agents_vivian():
     )
 
 
-    result = Runner.run_streamed(
-        manager_agent, input=USER_INPUT
-    )
+async def run_vivian(user_input: str, output_dir: Path | None = OUTPUT_DIR) -> FunctionalSpecification | None:
+    """Run the Vivian agent pipeline and optionally persist outputs."""
+    manager_agent = build_manager_agent()
+    result = Runner.run_streamed(manager_agent, input=user_input)
     tool_names_by_call_id = {}
     async for event in result.stream_events():
-        # We'll ignore the raw responses event deltas
         if event.type == "raw_response_event":
             continue
-        # When the agent updates, print that
         elif event.type == "agent_updated_stream_event":
             print(f"Agent updated: {event.new_agent.name}")
             continue
-        # When items are generated, print them
         elif event.type == "run_item_stream_event":
             if event.item.type == "tool_call_item":
                 raw = getattr(event.item, "raw_item", None)
@@ -118,16 +132,15 @@ async def agents_vivian():
                 suffix = f": {tool_name}" if tool_name else ""
                 print(f"-- Tool was called{suffix}")
             elif event.item.type == "tool_call_output_item":
-                # Output will be written to files; skip console printing to reduce noise.
                 continue
             elif event.item.type == "message_output_item":
                 print(f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}")
             else:
-                pass  # Ignore other event types
+                pass
 
     final_output = getattr(result, "final_output", None)
-    if final_output:
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    if final_output and output_dir:
+        output_dir.mkdir(parents=True, exist_ok=True)
         file_map = {
             "InteractionElements.json": final_output.interaction_elements.model_dump(),
             "VisualizationElements.json": final_output.visualization_elements.model_dump(),
@@ -136,9 +149,14 @@ async def agents_vivian():
             "Transitions.json": final_output.transitions.model_dump(),
         }
         for filename, payload in file_map.items():
-            path = OUTPUT_DIR / filename
+            path = output_dir / filename
             path.write_text(json.dumps(payload, indent=4, ensure_ascii=False), encoding="utf-8")
             print(f"Wrote {path}")
 
-    print("=== Run complete ===")
+    return final_output
 
+
+async def agents_vivian():
+    """Demo runner that uses the default USER_INPUT and writes files."""
+    _ = await run_vivian(USER_INPUT, OUTPUT_DIR)
+    print("=== Run complete ===")

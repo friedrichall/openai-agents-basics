@@ -1,6 +1,13 @@
 from pathlib import Path
 
 
+DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
+
+
+def _read_doc(doc_name: str) -> str:
+    return (DOCS_DIR / doc_name).read_text(encoding="utf-8")
+
+
 MANAGER_INSTRUCTIONS: str = """
         You are the Manager Agent for generating complete Vivian FunctionalSpecification configurations for interactive virtual prototypes.
         Your task is to coordinate the creation, validation, and refinement of the following five JSON files:
@@ -31,6 +38,7 @@ MANAGER_INSTRUCTIONS: str = """
         - Determine which of the five JSON files must be created or updated.
         - Delegate tasks to specialized sub-agents responsible for generating these JSON files (if available).
         - Validate logical consistency across all files:
+          - Enforce that InteractionElements.Name and VisualizationElements.Name exactly equal the user-provided Unity object names (case-sensitive; no prefixes/suffixes/renaming).
           - Interaction elements referenced by states and transitions must exist.
           - Visualization elements referenced by conditions must exist.
           - Visualization arrays must follow the rule of being empty unless future schema changes apply.
@@ -45,15 +53,15 @@ MANAGER_INSTRUCTIONS: str = """
         - When asked to generate or update any of the five files, output only valid structured JSON according to the active output_type.
         - Do not mix multiple JSON files in a single response unless explicitly asked.
         - Always respect the Vivian model: interaction drives transitions, transitions change states, and states control visualization and interaction element attributes.
+        - Every InteractionElements entry must use exactly the provided object name as its Name (case-sensitive, no renaming).
+        - Every VisualizationElements entry must use exactly the provided object name as its Name (case-sensitive, no renaming).
+        - Keep names consistent across Visualization/Interaction elements, States, and Transitions.
         """
 
-INTERACTION_ELEMENTS_INSTRUCTIONS = Path("docs/InteractionElementsDocuLLMFriendly").read_text(encoding="utf-8")
-
-TRANSITIONS_INSTRUCTIONS = Path("docs/TransitionsDocuLLMFriendly").read_text(encoding="utf-8")
-
-STATES_INSTRUCTIONS = Path("docs/StatesDocuLLMFriendly").read_text(encoding="utf-8")
-
-VISUALIZATION_ELEMENTS_INSTRUCTIONS = Path("docs/VisualizationElementsDocuLLMFriendly").read_text(encoding="utf-8")
+INTERACTION_ELEMENTS_INSTRUCTIONS = _read_doc("InteractionElementsDocuLLMFriendly")
+TRANSITIONS_INSTRUCTIONS = _read_doc("TransitionsDocuLLMFriendly")
+STATES_INSTRUCTIONS = _read_doc("StatesDocuLLMFriendly")
+VISUALIZATION_ELEMENTS_INSTRUCTIONS = _read_doc("VisualizationElementsDocuLLMFriendly")
 
 VISUALIZATION_ARRAYS_INSTRUCTIONS: str = (
     'Always return a VisualizationArrays.json object containing only an empty array: {"Elements": []}. '
