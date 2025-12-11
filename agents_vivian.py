@@ -104,6 +104,7 @@ def build_manager_agent() -> Agent:
 async def run_vivian(user_input: str, output_dir: Path | None = OUTPUT_DIR) -> FunctionalSpecification | None:
     """Run the Vivian agent pipeline and optionally persist outputs."""
     manager_agent = build_manager_agent()
+    print(f"[manager_agent] Received user input: {user_input}")
     result = Runner.run_streamed(manager_agent, input=user_input)
     tool_names_by_call_id = {}
     async for event in result.stream_events():
