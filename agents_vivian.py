@@ -7,13 +7,14 @@ from agents import Agent, Runner, ItemHelpers
 
 from constants.agent_instructions import MANAGER_INSTRUCTIONS, INTERACTION_ELEMENTS_INSTRUCTIONS, \
     TRANSITIONS_INSTRUCTIONS, STATES_INSTRUCTIONS, VISUALIZATION_ELEMENTS_INSTRUCTIONS, \
-    VISUALIZATION_ARRAYS_INSTRUCTIONS
+    VISUALIZATION_ARRAYS_INSTRUCTIONS, SCENARIO_PLANNER_INSTRUCTIONS
 from model.output_type_FuncSpec import FunctionalSpecification
 from model.output_type_InteractionElements import InteractionElements
 from model.output_type_States import States
 from model.output_type_Transitions import Transitions
 from model.output_type_VisualizationElements import VisualizationElements
 from model.output_type_VisualizationArrays import VisualizationArrays
+from model.output_type_ScenarioPlan import ScenarioPlan
 
 BASE_MODEL = "gpt-5.1"
 OUTPUT_DIR = Path("generated_specs")
@@ -40,6 +41,12 @@ def build_vivian_prompt(description: str, objects: Dict[str, str]) -> str:
 
 def build_manager_agent() -> Agent:
     """Create the Vivian manager agent with all sub-agents attached."""
+    scenario_planning_agent = Agent(
+        name="scenario_planning_agent",
+        model=BASE_MODEL,
+        instructions=SCENARIO_PLANNER_INSTRUCTIONS,
+        output_type=ScenarioPlan,
+    )
     interaction_elements_agent = Agent(
         name="interaction_elements_agent",
         model=BASE_MODEL,
@@ -76,6 +83,10 @@ def build_manager_agent() -> Agent:
         model=BASE_MODEL,
         instructions=MANAGER_INSTRUCTIONS,
         tools=[
+            scenario_planning_agent.as_tool(
+                tool_name="scenario_planner",
+                tool_description="Analyzes a natural language scenario and produces a ScenarioPlan (objects, states, interactions, events, visualizations)."
+            ),
             interaction_elements_agent.as_tool(
                 tool_name="interaction_elements_JSON_generator",
                 tool_description="Generates the InteractionElements.json file based on the prototype description and existing elements."
