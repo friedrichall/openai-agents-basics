@@ -3,6 +3,20 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
+class InteractionHint(BaseModel):
+    """Optional type hint for an interaction element inferred from scenario context."""
+
+    name: str = Field(..., description="Interaction element name, e.g., Lever or CancelButton.")
+    type_hint: Optional[str] = Field(
+        None,
+        description="Guessed interaction type (e.g., Button, ToggleButton, Slider, Rotatable, Movable, TouchArea).",
+    )
+    notes: Optional[str] = Field(
+        None,
+        description="Supporting rationale or constraints (e.g., momentary press, continuous range, rotation axis).",
+    )
+
+
 class TransitionHint(BaseModel):
     """Lightweight hint that links a trigger to a state change for transition planning."""
 
@@ -39,6 +53,10 @@ class ScenarioPlan(BaseModel):
     interactions: List[str] = Field(
         default_factory=list,
         description="User-facing interaction elements (e.g., Lever, CancelButton).",
+    )
+    interaction_hints: List[InteractionHint] = Field(
+        default_factory=list,
+        description="Optional interaction element type guesses inferred from the scenario.",
     )
     visualizations: List[str] = Field(
         default_factory=list,

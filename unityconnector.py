@@ -35,23 +35,28 @@ def _ensure_sys_path() -> None:
 
 
 def _parse_argv(argv: list[str]) -> Tuple[str, str, Dict[str, str]]:
-    """Parse CLI with group name support."""
+    """Parse CLI with group name support. Interaction types from CLI are ignored; the agent infers them."""
     if not argv:
         return "GeneratedGroup", "", {}
 
-    if len(argv) >= 3 and (len(argv) - 2) % 2 == 0:
-        group = argv[0]
+    if len(argv) >= 2:
+        group = argv[0] if len(argv) > 2 else "GeneratedGroup"
         description = argv[1]
-        pairs = argv[2:]
+        remainder = argv[2:]
     else:
         group = "GeneratedGroup"
         description = argv[0]
-        pairs = argv[1:]
+        remainder = argv[1:]
 
-    if len(pairs) % 2 != 0:
-        pairs = pairs[:-1]
+    # Support legacy name/type pairs but ignore the type part; keep only object names.
+    names: list[str] = []
+    if remainder:
+        if len(remainder) % 2 == 0 and len(remainder) >= 2:
+            names = remainder[::2]
+        else:
+            names = remainder
 
-    objects = {pairs[i]: pairs[i + 1] for i in range(0, len(pairs), 2)}
+    objects = {name: "" for name in names}
     return group, description, objects
 
 def _output_dirs(group: str) -> Tuple[Path, Path]:
@@ -95,8 +100,8 @@ def main() -> None:
     print("______________________________")
     print("Group:", group or "(empty)")
     print("Description:", description or "(empty)")
-    for name, element in object_interactions.items():
-        print(f"{name}: {element}")
+    for name in object_interactions.keys():
+        print(f"{name} (type inferred by agent)")
 
     user_prompt = build_vivian_prompt(description, object_interactions)
     group_dir, fs_dir = _output_dirs(group)

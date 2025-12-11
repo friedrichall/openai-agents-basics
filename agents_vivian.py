@@ -25,7 +25,8 @@ USER_INPUT = (
 
 
 def build_vivian_prompt(description: str, objects: Dict[str, str]) -> str:
-    object_lines = "\n".join(f"- {name}: {typ}" for name, typ in objects.items()) or "(none provided)"
+    names_only = list(objects.keys()) if objects else []
+    object_lines = "\n".join(f"- {name}" for name in names_only) or "(none provided)"
     return textwrap.dedent(
         f"""
         Create a complete Vivian FunctionalSpecification for the Unity scene below.
@@ -33,7 +34,7 @@ def build_vivian_prompt(description: str, objects: Dict[str, str]) -> str:
         Scene description:
         {description or "(no description provided)"}
 
-        Interaction objects (name -> interaction type):
+        Object names (infer their interaction element types yourself; do not rely on user-provided types):
         {object_lines}
         """
     ).strip()
@@ -117,6 +118,7 @@ async def run_vivian(user_input: str, output_dir: Path | None = OUTPUT_DIR) -> F
     manager_agent = build_manager_agent()
     result = Runner.run_streamed(manager_agent, input=user_input)
     tool_names_by_call_id = {}
+    print(f"[manager_agent] Received user input: {user_input}")
     async for event in result.stream_events():
         if event.type == "raw_response_event":
             continue

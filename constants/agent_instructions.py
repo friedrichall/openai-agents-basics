@@ -17,8 +17,8 @@ MANAGER_INSTRUCTIONS: str = """
 
         Planning-first workflow:
         - When the user describes a scenario, behavior, or multi-step interaction, FIRST call the scenario_planner tool to extract a ScenarioPlan
-          (objects, states, interactions, visualizations, events, initial/final states, transition hints). Do not invent JSON before planning.
-        - Use the ScenarioPlan to decide which interaction elements, states, transitions, and visualizations are required.
+          (objects, states, interactions, visualizations, events, initial/final states, transition hints, interaction type hints). Do not invent JSON before planning.
+        - Use the ScenarioPlan to decide which interaction elements, states, transitions, and visualizations are required. Infer interaction element types from the scenario (button-like press, slider range, rotation, movable, touch area) instead of expecting the user to provide types.
         - Then call the JSON generator tools to build each file. Do not output JSON directly - always use the tools:
           scenario_planner -> interaction_elements_JSON_generator -> states_JSON_generator -> transitions_JSON_generator
           -> visualization_elements_JSON_generator -> visualization_arrays_JSON_generator.
@@ -26,6 +26,7 @@ MANAGER_INSTRUCTIONS: str = """
 
         Consistency rules across files:
         - InteractionElements.Name and VisualizationElements.Name must match scenario names exactly (case-sensitive; no renaming).
+        - In States.json, any "InteractionElement" or "VisualizationElement" referenced inside Conditions must use exactly the provided object names (case-sensitive; no prefixes/suffixes/renaming).
         - States referenced by transitions must exist in States.json; interactions/visualizations referenced in conditions/transitions must exist.
         - Events must match allowed types for their interaction elements; guards must use valid guard schemas.
         - VisualizationArrays.json stays {"Elements": []} unless schema changes.
@@ -33,7 +34,7 @@ MANAGER_INSTRUCTIONS: str = """
         Toaster example (mental model for planning):
         - States: Idle, Toasting; initial Idle; timeout returns to Idle.
         - Transitions: LeverPressed moves Idle -> Toasting; CancelButtonPressed moves Toasting -> Idle; Timeout in Toasting -> Idle.
-        - Visuals: IndicatorLight ON while in Toasting, OFF otherwise; interactions: Lever, CancelButton.
+        - Visuals: IndicatorLight ON while in Toasting, OFF otherwise; interactions: Lever, CancelButton. Interaction types: lever/cancel are button-like presses; map to Button elements.
 
         Output discipline:
         - Reject impossible/ambiguous designs and ask for clarification when needed.
@@ -47,6 +48,7 @@ SCENARIO_PLANNER_INSTRUCTIONS: str = """
         Always return a valid ScenarioPlan object - no prose. Populate these fields with reusable names that downstream JSON agents can share:
         - objects: domain objects (e.g., Toaster, Toast, Lever, IndicatorLight).
         - interactions: user-facing controls (e.g., Lever, CancelButton).
+        - interaction_hints: optional type guesses (Button, ToggleButton, Slider, Rotatable, Movable, TouchArea) inferred from the scenario language.
         - visualizations: outputs/indicators (e.g., IndicatorLight, Screen).
         - states: logical states (e.g., Idle, Toasting, Error).
         - events: list of trigger/action mappings; include trigger, action, and any relevant source/destination state keys when obvious.
@@ -57,6 +59,7 @@ SCENARIO_PLANNER_INSTRUCTIONS: str = """
         - objects: Toaster, Toast, Lever, CancelButton, IndicatorLight
         - states: Idle, Toasting; initial_state=Idle
         - interactions: Lever, CancelButton
+        - interaction_hints: Lever -> Button, CancelButton -> Button
         - visualizations: IndicatorLight
         - events: LeverPressed -> start toasting/move to Toasting; CancelButtonPressed -> stop toasting/move to Idle; Timeout -> Idle
         - transition_hints: LeverPressed Idle->Toasting; CancelButtonPressed Toasting->Idle; Timeout Toasting->Idle
