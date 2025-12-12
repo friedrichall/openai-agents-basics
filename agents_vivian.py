@@ -133,7 +133,22 @@ async def run_vivian(user_input: str, output_dir: Path | None = OUTPUT_DIR) -> F
                 suffix = f": {tool_name}" if tool_name else ""
                 print(f"-- Tool was called{suffix}")
             elif event.item.type == "tool_call_output_item":
-                continue
+                # Emit the tool output, associating it with the originating tool name if available.
+                raw = getattr(event.item, "raw_item", None)
+                call_id = None
+                if hasattr(raw, "call_id"):
+                    call_id = raw.call_id
+                elif isinstance(raw, dict):
+                    call_id = raw.get("call_id")
+                tool_name = tool_names_by_call_id.get(call_id, "unknown_tool")
+                # Prefer structured output if present; fall back to raw object repr.
+                if hasattr(event.item, "output"):
+                    payload = getattr(event.item, "output")
+                elif isinstance(raw, dict) and "output" in raw:
+                    payload = raw["output"]
+                else:
+                    payload = raw or event.item
+                print(f"-- Tool output from {tool_name}: {payload}")
             elif event.item.type == "message_output_item":
                 print(f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}")
             else:
