@@ -2,5 +2,11 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vivian-windows-test-project" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vivian-windows-test-project/Packages/autoquest-generic-event-monitor-unity" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vivian-windows-test-project/Packages/vivian-autoquest-recording" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vivian-windows-test-project/Packages/vivian-core" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vivian-windows-test-project/Packages/vivian-example-prototypes" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/vivian-windows-test-project/Packages/vivian-mouse-interaction" vcs="Git" />
   </component>
 </project>
