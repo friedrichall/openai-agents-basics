@@ -10,7 +10,7 @@ using Debug = UnityEngine.Debug;
 
 public class GenerateInteractionsWindow : EditorWindow
 {
-    [MenuItem("Assets/generateinteractions")]
+    [MenuItem("Assets/Generate Interactions")]
     public static void ShowWindow()
     {
         GetWindow<GenerateInteractionsWindow>(true, "generate interactions");
@@ -41,6 +41,7 @@ public class GenerateInteractionsWindow : EditorWindow
         }
     }
 
+    // Generate Interactions - Screen 1
     private void DrawSelectionStep()
     {
         EditorGUILayout.LabelField("GameObjects in Active Scene", EditorStyles.boldLabel);
@@ -93,6 +94,7 @@ public class GenerateInteractionsWindow : EditorWindow
         }
     }
 
+    
     private void DrawInteractionElementsStep()
     {
         EditorGUILayout.LabelField("Selected Objects", EditorStyles.boldLabel);
@@ -112,6 +114,7 @@ public class GenerateInteractionsWindow : EditorWindow
         }
     }
 
+    // Generate Interactions - Screen 2
     private void PrepareInteractionDefinition()
     {
         _selectedObjects.Clear();
