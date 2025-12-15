@@ -1,0 +1,15 @@
+{
+  "States": [
+    {
+      "Name": "valueTransmissionState",
+      "Conditions": [
+        {
+          "Type": "InteractionElementCondition",
+          "InteractionElement": "Cube2",
+          "Attribute": "VALUE",
+          "Value": "Cube1"
+        }
+      ]
+    }
+  ]
+}
