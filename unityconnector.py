@@ -2,13 +2,60 @@
 """Unity entrypoint that reuses the existing Vivian agent pipeline."""
 
 import asyncio
+import base64
+import io
 import json
 import os
+import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Tuple, Optional, Any, List
+from typing import Dict, Tuple, Optional, Any, List, Iterable
 
 DEFAULT_OUTPUT_ROOT = Path("generated_specs")
+ORDERED_VIEW_NAMES = [
+    "front",
+    "back",
+    "left",
+    "right",
+    "top",
+    "bottom",
+    "iso_top_left",
+    "iso_top_right",
+]
+RGB_SUFFIX_BLACKLIST = ("_seg", "_depth", "_normal")
+MAX_OBJECTS_PER_RUN = 2
+IMAGE_ANALYSIS_TASK = (
+    "Analyze object/parts using the images; use JSON files as structure; do NOT guess measurements."
+)
+
+
+@dataclass(frozen=True)
+class ImagePayload:
+    object_name: str
+    view_name: str
+    filename: str
+    mime_type: str
+    content: bytes
+
+
+@dataclass
+class InputBundle:
+    group_name: str
+    interaction_description: str
+    scene_json_text: str
+    views_manifest_text: str
+    images: List[ImagePayload]
+
+
+@dataclass
+class ObjectImageSelection:
+    object_name: str
+    found_views: List[str]
+    missing_views: List[str]
+    images: List[ImagePayload]
+    missing_files: List[str]
+    skipped_views: List[str]
 
 
 def _prepare_console() -> None:
@@ -95,12 +142,13 @@ def _map_exported_object(obj: Dict[str, Any]) -> Dict[str, Any]:
     return mapped
 
 
-def _load_scene_json(scene_path: Path) -> Dict[str, Any]:
+def _load_scene_json(scene_path: Path) -> Tuple[Dict[str, Any], str]:
     """Load and validate the scene JSON export."""
     if not scene_path.exists():
         raise FileNotFoundError(f"Scene JSON not found: {scene_path}")
     try:
-        data = json.loads(scene_path.read_text(encoding="utf-8"))
+        raw_text = scene_path.read_text(encoding="utf-8")
+        data = json.loads(raw_text)
     except Exception as exc:
         raise ValueError(f"Failed to parse scene JSON: {scene_path} ({exc})") from exc
 
@@ -117,7 +165,115 @@ def _load_scene_json(scene_path: Path) -> Dict[str, Any]:
         "groupName": data.get("groupName") or "",
         "description": data.get("description") or "",
         "objects": mapped_objects,
-    }
+    }, raw_text
+
+
+def _load_views_manifest(manifest_path: Path) -> Tuple[Dict[str, Any], str]:
+    """Load and lightly validate the views manifest."""
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Views manifest not found: {manifest_path}")
+    try:
+        raw_text = manifest_path.read_text(encoding="utf-8")
+        data = json.loads(raw_text)
+    except Exception as exc:
+        raise ValueError(f"Failed to parse views manifest: {manifest_path} ({exc})") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError("Malformed views manifest: root must be an object.")
+    if "groupName" not in data or "renderSettings" not in data or "objects" not in data:
+        raise ValueError("Malformed views manifest: missing required keys.")
+
+    objects = data.get("objects")
+    if not isinstance(objects, list):
+        raise ValueError("Malformed views manifest: 'objects' must be a list.")
+
+    for obj in objects:
+        if not isinstance(obj, dict):
+            raise ValueError("Malformed views manifest: object entries must be objects.")
+        if "objectName" not in obj or "stableId" not in obj or "views" not in obj:
+            raise ValueError("Malformed views manifest: object missing required keys.")
+        views = obj.get("views")
+        if not isinstance(views, list):
+            raise ValueError("Malformed views manifest: 'views' must be a list.")
+        for view in views:
+            if not isinstance(view, dict):
+                raise ValueError("Malformed views manifest: view entries must be objects.")
+            if "viewName" not in view or "file" not in view:
+                raise ValueError("Malformed views manifest: view missing required keys.")
+
+    return data, raw_text
+
+
+def _is_rgb_view_file(file_name: str) -> bool:
+    if not isinstance(file_name, str):
+        return False
+    lowered = file_name.lower()
+    if not lowered.endswith(".png"):
+        return False
+    return not any(suffix in lowered for suffix in RGB_SUFFIX_BLACKLIST)
+
+
+def _select_ordered_views(views: Iterable[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str], List[str]]:
+    view_by_name: Dict[str, Dict[str, Any]] = {}
+    for view in views:
+        view_name = view.get("viewName") if isinstance(view, dict) else None
+        if isinstance(view_name, str) and view_name not in view_by_name:
+            view_by_name[view_name] = view
+
+    found = [name for name in ORDERED_VIEW_NAMES if name in view_by_name]
+    missing = [name for name in ORDERED_VIEW_NAMES if name not in view_by_name]
+    ordered_views = [view_by_name[name] for name in found]
+    return ordered_views, found, missing
+
+
+def _collect_object_images(group_dir: Path, obj: Dict[str, Any]) -> ObjectImageSelection:
+    object_name = obj.get("objectName") or "UnnamedObject"
+    views = obj.get("views") if isinstance(obj, dict) else None
+    if not isinstance(views, list):
+        return ObjectImageSelection(
+            object_name=object_name,
+            found_views=[],
+            missing_views=ORDERED_VIEW_NAMES[:],
+            images=[],
+            missing_files=[],
+            skipped_views=[],
+        )
+
+    ordered_views, found_view_names, missing_view_names = _select_ordered_views(views)
+    images: List[ImagePayload] = []
+    missing_files: List[str] = []
+    skipped_views: List[str] = []
+
+    for view in ordered_views:
+        view_name = view.get("viewName")
+        file_name = view.get("file")
+        if not isinstance(view_name, str) or not isinstance(file_name, str):
+            continue
+        if not _is_rgb_view_file(file_name):
+            skipped_views.append(view_name)
+            continue
+        image_path = group_dir / file_name
+        if not image_path.exists():
+            missing_files.append(file_name)
+            continue
+        images.append(
+            ImagePayload(
+                object_name=object_name,
+                view_name=view_name,
+                filename=file_name,
+                mime_type="image/png",
+                content=image_path.read_bytes(),
+            )
+        )
+
+    return ObjectImageSelection(
+        object_name=object_name,
+        found_views=found_view_names,
+        missing_views=missing_view_names,
+        images=images,
+        missing_files=missing_files,
+        skipped_views=skipped_views,
+    )
 
 
 def _summarize_scene(scene: Dict[str, Any]) -> str:
@@ -134,6 +290,99 @@ def _summarize_scene(scene: Dict[str, Any]) -> str:
     if len(objects) > 5:
         lines.append(f"...and {len(objects) - 5} more")
     return "\n".join(lines)
+
+
+def _safe_dir_name(value: str) -> str:
+    if not value:
+        return "batch"
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", value)
+
+
+def _select_manifest_objects(
+    manifest_objects: List[Dict[str, Any]],
+    requested_names: List[str],
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    if not requested_names:
+        return manifest_objects, []
+
+    by_name = {obj.get("objectName"): obj for obj in manifest_objects if isinstance(obj, dict)}
+    selected = []
+    missing = []
+    for name in requested_names:
+        obj = by_name.get(name)
+        if obj is None:
+            missing.append(name)
+        else:
+            selected.append(obj)
+    return selected, missing
+
+
+def _chunk_objects(items: List[ObjectImageSelection], chunk_size: int) -> List[List[ObjectImageSelection]]:
+    if chunk_size <= 0:
+        return [items]
+    return [items[idx: idx + chunk_size] for idx in range(0, len(items), chunk_size)]
+
+
+def _build_base64_image_items(images: List[ImagePayload]) -> List[Dict[str, Any]]:
+    items = []
+    for image in images:
+        encoded = base64.b64encode(image.content).decode("ascii")
+        data_url = f"data:{image.mime_type};base64,{encoded}"
+        items.append({"type": "input_image", "image_url": data_url})
+    return items
+
+
+def _build_uploaded_image_items(images: List[ImagePayload]) -> Tuple[List[Dict[str, Any]], List[ImagePayload]]:
+    try:
+        from openai import OpenAI
+    except Exception as exc:
+        print(f"Failed to import OpenAI client for image upload: {exc}")
+        return [], images
+
+    client = OpenAI()
+    items: List[Dict[str, Any]] = []
+    failed: List[ImagePayload] = []
+    for image in images:
+        try:
+            buffer = io.BytesIO(image.content)
+            buffer.name = Path(image.filename).name
+            response = client.files.create(file=buffer, purpose="user_data")
+            file_id = getattr(response, "id", None)
+            if not file_id:
+                raise RuntimeError("Upload did not return a file id.")
+            items.append({"type": "input_image", "image_url": {"file_id": file_id}})
+            print(f"Uploaded image {image.filename} -> {file_id}")
+        except Exception as exc:
+            print(f"Failed to upload image {image.filename}: {exc}")
+            failed.append(image)
+    return items, failed
+
+
+def _build_input_items(task_text: str, bundle: InputBundle, use_uploads: bool = True) -> List[Dict[str, Any]]:
+    content: List[Dict[str, Any]] = [
+        {"type": "input_text", "text": task_text},
+        {"type": "input_text", "text": f"SCENE_JSON:\n{bundle.scene_json_text}"},
+    ]
+    if bundle.views_manifest_text:
+        content.append({"type": "input_text", "text": f"VIEWS_MANIFEST_JSON:\n{bundle.views_manifest_text}"})
+
+    if bundle.images:
+        if use_uploads:
+            uploaded_items, failed = _build_uploaded_image_items(bundle.images)
+            content.extend(uploaded_items)
+            if failed:
+                content.extend(_build_base64_image_items(failed))
+        else:
+            content.extend(_build_base64_image_items(bundle.images))
+
+    return [
+        {
+            "type": "message",
+            "role": "user",
+            "content": content,
+        }
+    ]
+
 
 def _output_dirs(group: str) -> Tuple[Path, Path]:
     env_root = os.getenv("VIVIAN_OUTPUT_ROOT")
@@ -181,29 +430,118 @@ def main() -> None:
     print("Description:", description or "(empty)")
     print("Scene JSON path:", scene_json or "(none)")
     scene_path = Path(scene_json).expanduser() if scene_json else None
+    group_dir = scene_path.parent if scene_path else None
+    manifest_path = group_dir / "views_manifest.json" if group_dir else None
+    views_dir = group_dir / "views" if group_dir else None
+
+    print("Group dir:", group_dir or "(none)")
+    print("Views dir:", views_dir or "(none)")
+
     try:
-        scene_data = _load_scene_json(scene_path)
+        scene_data, scene_json_text = _load_scene_json(scene_path)
+        scene_loaded = True
     except Exception as exc:
         print(f"Failed to load scene JSON: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    manifest_loaded = False
+    manifest_data: Optional[Dict[str, Any]] = None
+    views_manifest_text = ""
+    if manifest_path and manifest_path.exists():
+        try:
+            manifest_data, views_manifest_text = _load_views_manifest(manifest_path)
+            manifest_loaded = True
+        except Exception as exc:
+            print(f"Failed to load views manifest: {exc}", file=sys.stderr)
+    else:
+        print("views_manifest.json missing; continuing without images.")
+
+    print("Scene JSON loaded:", "yes" if scene_loaded else "no")
+    print("Views manifest loaded:", "yes" if manifest_loaded else "no")
+
+    manifest_objects = manifest_data.get("objects", []) if manifest_data else []
+    print("Manifest objects:", len(manifest_objects))
+
     for name in object_interactions.keys():
         print(f"{name} (type inferred by agent)")
 
-    description_with_scene = f"{description}\n\n{_summarize_scene(scene_data)}"
+    if manifest_loaded:
+        selected_manifest_objects, missing_names = _select_manifest_objects(
+            manifest_objects,
+            list(object_interactions.keys()),
+        )
+        if missing_names:
+            print(f"Manifest missing requested objects: {', '.join(missing_names)}")
+    else:
+        selected_manifest_objects = []
 
-    user_prompt = build_vivian_prompt(description_with_scene, object_interactions)
-    group_dir, fs_dir = _output_dirs(group)
+    object_selections: List[ObjectImageSelection] = []
+    if manifest_loaded:
+        for obj in selected_manifest_objects:
+            selection = _collect_object_images(group_dir, obj)
+            object_selections.append(selection)
+            found = ", ".join(selection.found_views) or "(none)"
+            missing = ", ".join(selection.missing_views) or "(none)"
+            print(f"[{selection.object_name}] views found: {found}")
+            print(f"[{selection.object_name}] views missing: {missing}")
+            if selection.skipped_views:
+                skipped = ", ".join(selection.skipped_views)
+                print(f"[{selection.object_name}] views skipped (non-RGB): {skipped}")
+            if selection.missing_files:
+                missing_files = ", ".join(selection.missing_files)
+                print(f"[{selection.object_name}] missing files: {missing_files}")
 
-    try:
-        spec = asyncio.run(run_vivian(user_prompt, fs_dir))
-    except Exception as exc:  # pragma: no cover - defensive logging
-        print(f"Failed to run Vivian pipeline: {exc}", file=sys.stderr)
-        sys.exit(1)
+    total_images = sum(len(selection.images) for selection in object_selections)
+    print("Images ready to send:", total_images)
 
-    if spec is None:
-        print("No output received from Vivian agents.", file=sys.stderr)
-        sys.exit(1)
+    _, fs_dir = _output_dirs(group)
+
+    batches = _chunk_objects(object_selections, MAX_OBJECTS_PER_RUN) if object_selections else [[]]
+    if len(batches) > 1:
+        print(f"Splitting into {len(batches)} agent runs (max {MAX_OBJECTS_PER_RUN} objects each).")
+
+    for index, batch in enumerate(batches, start=1):
+        batch_images = [image for selection in batch for image in selection.images]
+        if batch:
+            batch_objects = {
+                selection.object_name: object_interactions.get(selection.object_name, "")
+                for selection in batch
+            }
+        elif object_interactions:
+            batch_objects = object_interactions
+        elif selected_manifest_objects:
+            batch_objects = {
+                obj.get("objectName", "UnnamedObject"): "" for obj in selected_manifest_objects if isinstance(obj, dict)
+            }
+        else:
+            batch_objects = {}
+        task_text = f"{IMAGE_ANALYSIS_TASK}\n\n{build_vivian_prompt(description, batch_objects)}"
+        bundle = InputBundle(
+            group_name=group,
+            interaction_description=description,
+            scene_json_text=scene_json_text,
+            views_manifest_text=views_manifest_text,
+            images=batch_images,
+        )
+        content = _build_input_items(task_text, bundle, use_uploads=True)
+
+        if len(batches) > 1:
+            batch_label = "_".join(_safe_dir_name(selection.object_name) for selection in batch)
+            if not batch_label:
+                batch_label = f"batch_{index}"
+            output_dir = fs_dir / batch_label
+        else:
+            output_dir = fs_dir
+
+        try:
+            spec = asyncio.run(run_vivian(content, output_dir))
+        except Exception as exc:  # pragma: no cover - defensive logging
+            print(f"Failed to run Vivian pipeline: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        if spec is None:
+            print("No output received from Vivian agents.", file=sys.stderr)
+            sys.exit(1)
 
     print("")
     print("OK: files generated in:", fs_dir)

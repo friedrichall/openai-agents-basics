@@ -1,7 +1,7 @@
 import json
 import textwrap
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Any, List
 
 from agents import Agent, Runner, ItemHelpers
 
@@ -101,10 +101,46 @@ def build_manager_agent() -> Agent:
     )
 
 
-async def run_vivian(user_input: str, output_dir: Path | None = OUTPUT_DIR) -> FunctionalSpecification | None:
+def _summarize_user_input(user_input: Any) -> str:
+    if isinstance(user_input, str):
+        return user_input
+    if isinstance(user_input, list):
+        counts: Dict[str, int] = {}
+        text_chars = 0
+        for item in user_input:
+            if not isinstance(item, dict):
+                counts["unknown"] = counts.get("unknown", 0) + 1
+                continue
+            item_type = item.get("type")
+            if item_type:
+                counts[item_type] = counts.get(item_type, 0) + 1
+            elif "role" in item and "content" in item:
+                counts["message"] = counts.get("message", 0) + 1
+            else:
+                counts["unknown"] = counts.get("unknown", 0) + 1
+
+            content = item.get("content")
+            if isinstance(content, str):
+                text_chars += len(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        counts["unknown_content"] = counts.get("unknown_content", 0) + 1
+                        continue
+                    part_type = part.get("type", "unknown_content")
+                    counts[part_type] = counts.get(part_type, 0) + 1
+                    if part_type == "input_text":
+                        text = part.get("text")
+                        if isinstance(text, str):
+                            text_chars += len(text)
+        return f"multimodal input: {counts}, text_chars={text_chars}"
+    return repr(user_input)
+
+
+async def run_vivian(user_input: str | List[Dict[str, Any]], output_dir: Path | None = OUTPUT_DIR) -> FunctionalSpecification | None:
     """Run the Vivian agent pipeline and optionally persist outputs."""
     manager_agent = build_manager_agent()
-    print(f"[manager_agent] Received user input: {user_input}")
+    print(f"[manager_agent] Received user input: {_summarize_user_input(user_input)}")
     result = Runner.run_streamed(manager_agent, input=user_input)
     tool_names_by_call_id = {}
     async for event in result.stream_events():
