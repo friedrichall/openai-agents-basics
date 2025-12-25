@@ -28,26 +28,6 @@ MAX_OBJECTS_PER_RUN = 2
 IMAGE_ANALYSIS_TASK = (
     "Analyze object/parts using the images; use JSON files as structure; do NOT guess measurements."
 )
-SUMMARY_SCHEMA_VERSION = 1
-SUMMARY_MAX_PARTS = 50
-CANDIDATE_KEYWORDS = {
-    "button": "button",
-    "btn": "button",
-    "knob": "knob",
-    "dial": "dial",
-    "lever": "lever",
-    "handle": "handle",
-    "slider": "slider",
-    "switch": "switch",
-    "toggle": "switch",
-    "lid": "lid",
-    "door": "door",
-    "hinge": "hinge",
-    "latch": "latch",
-    "trigger": "trigger",
-    "wheel": "wheel",
-    "cap": "cap",
-}
 
 
 @dataclass(frozen=True)
@@ -65,7 +45,6 @@ class InputBundle:
     interaction_description: str
     scene_json_text: str
     views_manifest_text: str
-    object_summary_text: str
     images: List[ImagePayload]
 
 
@@ -131,236 +110,6 @@ def _safe_vec(value: Any, length: int = 3) -> List[float]:
         vals = list(value)[:length]
         return vals + [0.0] * (length - len(vals))
     return [0.0] * length
-
-
-def _round_float(value: float, places: int = 4) -> float:
-    rounded = round(float(value), places)
-    return 0.0 if abs(rounded) < 1e-9 else rounded
-
-
-def _iter_vertices(vertices: Any) -> Iterable[Tuple[float, float, float]]:
-    if isinstance(vertices, list):
-        if vertices and all(isinstance(v, (int, float)) for v in vertices):
-            for idx in range(0, len(vertices) - 2, 3):
-                yield (float(vertices[idx]), float(vertices[idx + 1]), float(vertices[idx + 2]))
-            return
-        for vertex in vertices:
-            if isinstance(vertex, dict):
-                yield (
-                    float(vertex.get("x", 0.0)),
-                    float(vertex.get("y", 0.0)),
-                    float(vertex.get("z", 0.0)),
-                )
-            elif isinstance(vertex, (list, tuple)) and len(vertex) >= 3:
-                yield (float(vertex[0]), float(vertex[1]), float(vertex[2]))
-
-
-def _quat_rotate(q: List[float], v: Tuple[float, float, float]) -> Tuple[float, float, float]:
-    qx, qy, qz, qw = (q + [0.0, 0.0, 0.0, 1.0])[:4]
-    vx, vy, vz = v
-    tx = 2.0 * (qy * vz - qz * vy)
-    ty = 2.0 * (qz * vx - qx * vz)
-    tz = 2.0 * (qx * vy - qy * vx)
-    rx = vx + qw * tx + (qy * tz - qz * ty)
-    ry = vy + qw * ty + (qz * tx - qx * tz)
-    rz = vz + qw * tz + (qx * ty - qy * tx)
-    return rx, ry, rz
-
-
-def _apply_transform(vertex: Tuple[float, float, float], transform: Dict[str, Any]) -> Tuple[float, float, float]:
-    sx, sy, sz = _safe_vec(transform.get("scale"), length=3)
-    px, py, pz = _safe_vec(transform.get("position"), length=3)
-    q = _safe_vec(transform.get("rotation"), length=4)
-    vx, vy, vz = vertex
-    vx *= sx
-    vy *= sy
-    vz *= sz
-    vx, vy, vz = _quat_rotate(q, (vx, vy, vz))
-    return vx + px, vy + py, vz + pz
-
-
-def _merge_bounds(bounds: Optional[Tuple[float, float, float, float, float, float]],
-                  other: Optional[Tuple[float, float, float, float, float, float]]
-                  ) -> Optional[Tuple[float, float, float, float, float, float]]:
-    if bounds is None:
-        return other
-    if other is None:
-        return bounds
-    min_x = min(bounds[0], other[0])
-    min_y = min(bounds[1], other[1])
-    min_z = min(bounds[2], other[2])
-    max_x = max(bounds[3], other[3])
-    max_y = max(bounds[4], other[4])
-    max_z = max(bounds[5], other[5])
-    return (min_x, min_y, min_z, max_x, max_y, max_z)
-
-
-def _mesh_bounds(mesh: Dict[str, Any], transform: Dict[str, Any]) -> Optional[Tuple[float, float, float, float, float, float]]:
-    vertices = mesh.get("vertices") if isinstance(mesh, dict) else None
-    if not vertices:
-        return None
-    bounds: Optional[Tuple[float, float, float, float, float, float]] = None
-    for vertex in _iter_vertices(vertices):
-        wx, wy, wz = _apply_transform(vertex, transform)
-        if bounds is None:
-            bounds = (wx, wy, wz, wx, wy, wz)
-        else:
-            bounds = _merge_bounds(bounds, (wx, wy, wz, wx, wy, wz))
-    return bounds
-
-
-def _object_bounds(obj: Dict[str, Any]) -> Optional[Tuple[float, float, float, float, float, float]]:
-    bounds = _mesh_bounds(obj.get("mesh") or {}, obj.get("transform") or {})
-    children = obj.get("children") or []
-    for child in children:
-        if isinstance(child, dict):
-            bounds = _merge_bounds(bounds, _object_bounds(child))
-    return bounds
-
-
-def _bounds_dims(bounds: Optional[Tuple[float, float, float, float, float, float]]) -> Optional[List[float]]:
-    if bounds is None:
-        return None
-    min_x, min_y, min_z, max_x, max_y, max_z = bounds
-    return [
-        _round_float(max_x - min_x),
-        _round_float(max_y - min_y),
-        _round_float(max_z - min_z),
-    ]
-
-
-def _classify_image_kind(file_name: str) -> str:
-    lowered = file_name.lower()
-    if "_seg" in lowered:
-        return "segmentation"
-    if "_depth" in lowered:
-        return "depth"
-    if "_normal" in lowered:
-        return "normal"
-    return "rgb" if _is_rgb_view_file(file_name) else "unknown"
-
-
-def _candidate_labels(name: str) -> List[str]:
-    lowered = name.lower()
-    labels = []
-    for key, label in CANDIDATE_KEYWORDS.items():
-        if key in lowered:
-            labels.append(label)
-    return labels
-
-
-def _object_candidates(name: str, source: str) -> List[Dict[str, str]]:
-    if not name:
-        return []
-    labels = _candidate_labels(name)
-    return [{"label": label, "name": name, "source": source} for label in labels]
-
-
-def _build_object_summary(
-    scene_data: Dict[str, Any],
-    manifest_data: Optional[Dict[str, Any]],
-    include_names: Optional[Iterable[str]] = None,
-) -> Dict[str, Any]:
-    include_set = {name for name in (include_names or []) if name}
-    manifest_objects = manifest_data.get("objects", []) if manifest_data else []
-    images_by_name: Dict[str, List[Dict[str, str]]] = {}
-    for obj in manifest_objects:
-        if not isinstance(obj, dict):
-            continue
-        obj_name = obj.get("objectName")
-        if not isinstance(obj_name, str):
-            continue
-        views = obj.get("views") if isinstance(obj.get("views"), list) else []
-        images_by_name[obj_name] = [
-            {
-                "view": view.get("viewName", ""),
-                "file": view.get("file", ""),
-                "kind": _classify_image_kind(view.get("file", "")),
-            }
-            for view in views
-            if isinstance(view, dict) and view.get("file")
-        ]
-
-    summary_objects: List[Dict[str, Any]] = []
-    for obj in scene_data.get("objects", []):
-        if not isinstance(obj, dict):
-            continue
-        name = obj.get("name") or "UnnamedObject"
-        if include_set and name not in include_set:
-            continue
-        bounds = _object_bounds(obj)
-        dims = _bounds_dims(bounds)
-        children = obj.get("children") or []
-        parts: List[Dict[str, Any]] = []
-        candidates: List[Dict[str, str]] = []
-        parts_source = "none"
-        if children:
-            parts_source = "children"
-            for child in children[:SUMMARY_MAX_PARTS]:
-                if not isinstance(child, dict):
-                    continue
-                child_name = child.get("name") or "UnnamedPart"
-                child_bounds = _object_bounds(child)
-                child_dims = _bounds_dims(child_bounds)
-                parts.append({"name": child_name, "dims": child_dims})
-                candidates.extend(_object_candidates(child_name, "part"))
-            if len(children) > SUMMARY_MAX_PARTS:
-                parts.append({"name": "parts_truncated", "dims": None})
-        else:
-            materials = obj.get("materials") or []
-            if materials:
-                parts_source = "materials"
-                for material in materials[:SUMMARY_MAX_PARTS]:
-                    if material:
-                        parts.append({"name": str(material), "dims": None})
-                if len(materials) > SUMMARY_MAX_PARTS:
-                    parts.append({"name": "parts_truncated", "dims": None})
-
-        candidates.extend(_object_candidates(str(name), "object"))
-        unique_candidates = []
-        seen = set()
-        for candidate in candidates:
-            key = (candidate.get("label"), candidate.get("name"), candidate.get("source"))
-            if key in seen:
-                continue
-            seen.add(key)
-            unique_candidates.append(candidate)
-
-        summary_objects.append(
-            {
-                "name": name,
-                "dims": dims,
-                "parts_source": parts_source,
-                "parts": parts,
-                "images": images_by_name.get(name, []),
-                "interaction_candidates": unique_candidates,
-            }
-        )
-
-    return {
-        "schema_version": SUMMARY_SCHEMA_VERSION,
-        "units": "unity",
-        "group": scene_data.get("groupName") or "",
-        "objects": summary_objects,
-    }
-
-
-def _serialize_summary(summary: Dict[str, Any]) -> str:
-    return json.dumps(summary, ensure_ascii=True, separators=(",", ":"))
-
-
-def _filter_summary(summary: Dict[str, Any], include_names: Iterable[str]) -> Dict[str, Any]:
-    include_set = {name for name in include_names if name}
-    if not include_set:
-        return summary
-    filtered = dict(summary)
-    objects = summary.get("objects", [])
-    filtered["objects"] = [
-        obj for obj in objects if isinstance(obj, dict) and obj.get("name") in include_set
-    ]
-    return filtered
-
-
 def _map_exported_object(obj: Dict[str, Any]) -> Dict[str, Any]:
     """Convert a raw exported object dict into a normalized internal shape."""
     transform = obj.get("transform", {}) or {}
@@ -611,7 +360,6 @@ def _build_uploaded_image_items(images: List[ImagePayload]) -> Tuple[List[Dict[s
 def _build_input_items(task_text: str, bundle: InputBundle, use_uploads: bool = True) -> List[Dict[str, Any]]:
     content: List[Dict[str, Any]] = [
         {"type": "input_text", "text": task_text},
-        {"type": "input_text", "text": f"OBJECT_SUMMARY_JSON:\n{bundle.object_summary_text}"},
         {"type": "input_text", "text": f"SCENE_JSON:\n{bundle.scene_json_text}"},
     ]
     if bundle.views_manifest_text:
@@ -746,12 +494,6 @@ def main() -> None:
     print("Images ready to send:", total_images)
 
     _, fs_dir = _output_dirs(group)
-    object_summary = _build_object_summary(scene_data, manifest_data)
-    object_summary_text = _serialize_summary(object_summary)
-    if group_dir:
-        summary_path = group_dir / "object_summary.json"
-        summary_path.write_text(object_summary_text, encoding="utf-8")
-        print("Object summary written:", summary_path)
 
     batches = _chunk_objects(object_selections, MAX_OBJECTS_PER_RUN) if object_selections else [[]]
     if len(batches) > 1:
@@ -773,14 +515,11 @@ def main() -> None:
         else:
             batch_objects = {}
         task_text = f"{IMAGE_ANALYSIS_TASK}\n\n{build_vivian_prompt(description, batch_objects)}"
-        batch_summary = _filter_summary(object_summary, batch_objects.keys())
-        batch_summary_text = _serialize_summary(batch_summary)
         bundle = InputBundle(
             group_name=group,
             interaction_description=description,
             scene_json_text=scene_json_text,
             views_manifest_text=views_manifest_text,
-            object_summary_text=batch_summary_text,
             images=batch_images,
         )
         content = _build_input_items(task_text, bundle, use_uploads=True)
