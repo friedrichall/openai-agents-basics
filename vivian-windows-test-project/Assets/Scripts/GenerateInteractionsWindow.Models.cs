@@ -81,7 +81,6 @@ public partial class GenerateInteractionsWindow
     {
         public string name;
         public SerializableTransform transform;
-        public SerializableMesh mesh;
         public List<SerializableMaterial> materials;
         public List<ExportedObject> children;
     }
@@ -99,15 +98,6 @@ public partial class GenerateInteractionsWindow
             rotation = t.rotation;
             scale = t.lossyScale;
         }
-    }
-
-    [Serializable]
-    private class SerializableMesh
-    {
-        public List<Vector3> vertices;
-        public List<Vector3> normals;
-        public List<Vector2> uvs;
-        public int[] triangles;
     }
 
     [Serializable]

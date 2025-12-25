@@ -114,7 +114,6 @@ public partial class GenerateInteractionsWindow
         {
             name = go.name,
             transform = new SerializableTransform(go.transform),
-            mesh = ExtractMesh(go),
             materials = ExtractMaterials(go),
             children = new List<ExportedObject>()
         };
@@ -125,23 +124,6 @@ public partial class GenerateInteractionsWindow
         }
 
         return data;
-    }
-
-    private SerializableMesh ExtractMesh(GameObject go)
-    {
-        var meshFilter = go.GetComponent<MeshFilter>();
-        var skinnedMesh = go.GetComponent<SkinnedMeshRenderer>();
-
-        var mesh = meshFilter != null ? meshFilter.sharedMesh : skinnedMesh != null ? skinnedMesh.sharedMesh : null;
-        if (mesh == null) return null;
-
-        return new SerializableMesh
-        {
-            vertices = new List<Vector3>(mesh.vertices),
-            normals = new List<Vector3>(mesh.normals),
-            uvs = new List<Vector2>(mesh.uv),
-            triangles = mesh.triangles
-        };
     }
 
     private List<SerializableMaterial> ExtractMaterials(GameObject go)
