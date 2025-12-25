@@ -15,7 +15,7 @@ from model.output_type_Transitions import Transitions
 from model.output_type_VisualizationElements import VisualizationElements
 from model.output_type_VisualizationArrays import VisualizationArrays
 
-BASE_MODEL = "gpt-5.1"
+BASE_MODEL = "gpt-5.2"
 OUTPUT_DIR = Path("generated_specs")
 
 USER_INPUT = (
