@@ -1,5 +1,27 @@
 #!/usr/bin/env python3
-"""Unity entrypoint that reuses the existing Vivian agent pipeline."""
+"""Unity entrypoint that reuses the existing Vivian agent pipeline.
+
+Usage:
+    python unityconnector.py <group> <description> <scene_json> [object_name...]
+
+Inputs:
+- A scene JSON export containing an "objects" array (required).
+- Optional `views_manifest.json` and `views/` images in the same folder.
+
+Environment:
+- OPENAI_API_KEY is required for agent calls.
+- VIVIAN_VENV can point to a venv so Unity can import dependencies.
+- VIVIAN_OUTPUT_ROOT overrides the output root; defaults to the Unity
+  `Packages/vivian-example-prototypes/Resources` folder when present.
+
+Output:
+- Writes generated specs under `<group>/FunctionalSpecification` inside the
+  chosen output root.
+
+Notes:
+- Only RGB PNG views are sent; segmentation/depth/normal views are skipped.
+- Images are uploaded as OpenAI files when possible, otherwise sent as data URLs.
+"""
 
 import asyncio
 import base64
@@ -59,6 +81,7 @@ class ObjectImageSelection:
 
 
 def _prepare_console() -> None:
+    """Configure stdout/stderr to replace encoding errors."""
     try:
         sys.stdout.reconfigure(errors="replace")
         sys.stderr.reconfigure(errors="replace")
@@ -204,6 +227,7 @@ def _load_views_manifest(manifest_path: Path) -> Tuple[Dict[str, Any], str]:
 
 
 def _is_rgb_view_file(file_name: str) -> bool:
+    """Return True for RGB PNG view files (non-seg/depth/normal)."""
     if not isinstance(file_name, str):
         return False
     lowered = file_name.lower()
@@ -213,6 +237,7 @@ def _is_rgb_view_file(file_name: str) -> bool:
 
 
 def _select_ordered_views(views: Iterable[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str], List[str]]:
+    """Sort views into the preferred ordering and list missing names."""
     view_by_name: Dict[str, Dict[str, Any]] = {}
     for view in views:
         view_name = view.get("viewName") if isinstance(view, dict) else None
@@ -226,6 +251,7 @@ def _select_ordered_views(views: Iterable[Dict[str, Any]]) -> Tuple[List[Dict[st
 
 
 def _collect_object_images(group_dir: Path, obj: Dict[str, Any]) -> ObjectImageSelection:
+    """Load RGB view images for an object and track missing/ignored views."""
     object_name = obj.get("objectName") or "UnnamedObject"
     views = obj.get("views") if isinstance(obj, dict) else None
     if not isinstance(views, list):
@@ -292,6 +318,7 @@ def _summarize_scene(scene: Dict[str, Any]) -> str:
 
 
 def _safe_dir_name(value: str) -> str:
+    """Normalize a string to a filesystem-friendly directory name."""
     if not value:
         return "batch"
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value)
@@ -301,6 +328,7 @@ def _select_manifest_objects(
     manifest_objects: List[Dict[str, Any]],
     requested_names: List[str],
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Filter manifest objects by requested names, reporting missing ones."""
     if not requested_names:
         return manifest_objects, []
 
@@ -317,12 +345,14 @@ def _select_manifest_objects(
 
 
 def _chunk_objects(items: List[ObjectImageSelection], chunk_size: int) -> List[List[ObjectImageSelection]]:
+    """Split a list into fixed-size chunks."""
     if chunk_size <= 0:
         return [items]
     return [items[idx: idx + chunk_size] for idx in range(0, len(items), chunk_size)]
 
 
 def _build_base64_image_items(images: List[ImagePayload]) -> List[Dict[str, Any]]:
+    """Encode images as data URLs for model input."""
     items = []
     for image in images:
         encoded = base64.b64encode(image.content).decode("ascii")
@@ -332,6 +362,7 @@ def _build_base64_image_items(images: List[ImagePayload]) -> List[Dict[str, Any]
 
 
 def _build_uploaded_image_items(images: List[ImagePayload]) -> Tuple[List[Dict[str, Any]], List[ImagePayload]]:
+    """Upload images and return input items plus any failures."""
     try:
         from openai import OpenAI
     except Exception as exc:
@@ -358,6 +389,7 @@ def _build_uploaded_image_items(images: List[ImagePayload]) -> Tuple[List[Dict[s
 
 
 def _build_input_items(task_text: str, bundle: InputBundle, use_uploads: bool = True) -> List[Dict[str, Any]]:
+    """Create the message payload with scene JSON, manifest, and images."""
     content: List[Dict[str, Any]] = [
         {"type": "input_text", "text": task_text},
         {"type": "input_text", "text": f"SCENE_JSON:\n{bundle.scene_json_text}"},
@@ -384,6 +416,7 @@ def _build_input_items(task_text: str, bundle: InputBundle, use_uploads: bool = 
 
 
 def _output_dirs(group: str) -> Tuple[Path, Path]:
+    """Resolve output directories for generated specs."""
     env_root = os.getenv("VIVIAN_OUTPUT_ROOT")
     if env_root:
         root = Path(env_root)
@@ -398,6 +431,7 @@ def _output_dirs(group: str) -> Tuple[Path, Path]:
 
 
 def main() -> None:
+    """CLI entrypoint for Unity-driven spec generation."""
     _prepare_console()
     _ensure_sys_path()
 
